@@ -122,5 +122,17 @@ func printStatus(w io.Writer, status *status.K0sStatus, output string) {
 			fmt.Fprintln(w, "Service file:", status.StubFile)
 		}
 
+		// Controller-specific control-plane details
+		if status.Role == "controller" {
+			fmt.Fprintln(w, "Controller Manager active:", status.ControlPlane.ControllerManagerActive)
+			if status.ControlPlane.ControllerManagerLeader != "" {
+				fmt.Fprintln(w, "Controller Manager leader:", status.ControlPlane.ControllerManagerLeader)
+			}
+			fmt.Fprintln(w, "Scheduler active:", status.ControlPlane.SchedulerActive)
+			if status.ControlPlane.SchedulerLeader != "" {
+				fmt.Fprintln(w, "Scheduler leader:", status.ControlPlane.SchedulerLeader)
+			}
+		}
+
 	}
 }

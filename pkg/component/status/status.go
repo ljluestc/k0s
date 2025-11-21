@@ -20,6 +20,7 @@ import (
 	kubeutil "github.com/k0sproject/k0s/pkg/kubernetes"
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -148,6 +149,14 @@ func (sh *statusHandler) getCurrentStatus(ctx context.Context) K0sStatus {
 		return status
 	}
 	status.WorkerToAPIConnectionStatus.Success = true
+
+	// On controllers, enrich status with control-plane component leader activity.
+	if status.Role == "controller" && status.K0sVars != nil && status.K0sVars.AdminKubeConfigPath != "" {
+		if err := sh.populateControlPlaneStatus(ctx, &status); err != nil {
+			// Do not fail the whole status on control-plane lookup errors; just log.
+			sh.Status.L.WithError(err).Debug("failed to populate control plane status")
+		}
+	}
 	return status
 }
 
@@ -165,4 +174,50 @@ func (sh *statusHandler) buildWorkerSideKubeAPIClient(ctx context.Context) (clie
 		return nil, err
 	}
 	return client, nil
+}
+
+func (sh *statusHandler) populateControlPlaneStatus(ctx context.Context, status *K0sStatus) error {
+	// If leader election is disabled (single controller or non-joinable storage),
+	// there will be no leases for scheduler/controller-manager. In that case,
+	// report components as active and set leader to the local hostname.
+	leaderElectionDisabled := status.SingleNode || (status.ClusterConfig != nil && !status.ClusterConfig.Spec.Storage.IsJoinable())
+	if leaderElectionDisabled {
+		status.ControlPlane.SchedulerActive = true
+		status.ControlPlane.ControllerManagerActive = true
+		if hn, err := os.Hostname(); err == nil {
+			status.ControlPlane.SchedulerLeader = hn
+			status.ControlPlane.ControllerManagerLeader = hn
+		}
+		return nil
+	}
+
+	factory := kubeutil.ClientFactory{LoadRESTConfig: func() (*rest.Config, error) {
+		return kubeutil.ClientConfig(kubeutil.KubeconfigFromFile(status.K0sVars.AdminKubeConfigPath))
+	}}
+	adminClient, err := factory.GetClient()
+	if err != nil {
+		return err
+	}
+
+	// kube-scheduler lease
+	if lease, err := adminClient.CoordinationV1().Leases("kube-system").Get(ctx, "kube-scheduler", v1.GetOptions{}); err == nil {
+		if lease.Spec.HolderIdentity != nil {
+			status.ControlPlane.SchedulerLeader = *lease.Spec.HolderIdentity
+		}
+		status.ControlPlane.SchedulerActive = kubeutil.IsValidLease(*lease)
+	} else if !apierrors.IsNotFound(err) {
+		return err
+	}
+
+	// kube-controller-manager lease
+	if lease, err := adminClient.CoordinationV1().Leases("kube-system").Get(ctx, "kube-controller-manager", v1.GetOptions{}); err == nil {
+		if lease.Spec.HolderIdentity != nil {
+			status.ControlPlane.ControllerManagerLeader = *lease.Spec.HolderIdentity
+		}
+		status.ControlPlane.ControllerManagerActive = kubeutil.IsValidLease(*lease)
+	} else if !apierrors.IsNotFound(err) {
+		return err
+	}
+
+	return nil
 }

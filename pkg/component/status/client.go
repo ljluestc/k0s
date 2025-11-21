@@ -31,10 +31,23 @@ type K0sStatus struct {
 	WorkerToAPIConnectionStatus ProbeStatus
 	ClusterConfig               *v1beta1.ClusterConfig
 	K0sVars                     *config.CfgVars
+	ControlPlane                ControlPlaneStatus `json:"controlPlane"`
 }
 type ProbeStatus struct {
 	Message string
 	Success bool
+}
+
+// ControlPlaneStatus reports high-signal readiness for core control-plane leaders.
+type ControlPlaneStatus struct {
+	// SchedulerActive indicates if a valid leader election lease exists for kube-scheduler.
+	SchedulerActive bool `json:"schedulerActive"`
+	// SchedulerLeader is the current holder identity for kube-scheduler leader lease, if any.
+	SchedulerLeader string `json:"schedulerLeader,omitempty"`
+	// ControllerManagerActive indicates if a valid leader election lease exists for kube-controller-manager.
+	ControllerManagerActive bool `json:"controllerManagerActive"`
+	// ControllerManagerLeader is the current holder identity for kube-controller-manager leader lease, if any.
+	ControllerManagerLeader string `json:"controllerManagerLeader,omitempty"`
 }
 
 // GetStatus returns the status of the k0s process using the status socket
