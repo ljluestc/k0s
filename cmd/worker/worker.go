@@ -303,7 +303,9 @@ func (c *Command) Start(ctx context.Context, nodeName apitypes.NodeName, kubelet
 		return err
 	}
 
-	worker.KernelSetup()
+	if err := worker.KernelSetup(workerConfig.Kernel); err != nil {
+		return err
+	}
 
 	err = componentManager.Start(ctx)
 	if err != nil {

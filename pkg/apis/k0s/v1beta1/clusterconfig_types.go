@@ -40,7 +40,21 @@ type ClusterSpec struct {
 	Extensions        *ClusterExtensions     `json:"extensions,omitempty"`
 	Konnectivity      *KonnectivitySpec      `json:"konnectivity,omitempty"`
 	FeatureGates      FeatureGates           `json:"featureGates,omitempty"`
+	Kernel            *KernelSpec            `json:"kernel,omitempty"`
 }
+
+// KernelSpec defines kernel-related configurations for the cluster
+type KernelSpec struct {
+	// Modules is a list of kernel modules that should be loaded
+	Modules []string `json:"modules,omitempty"`
+
+	// SysctlParams is a map of sysctl parameters that should be configured
+	SysctlParams map[string]string `json:"sysctlParams,omitempty"`
+}
+
+var _ Validateable = (*KernelSpec)(nil)
+
+func (*KernelSpec) Validate() []error { return nil }
 
 // ClusterConfigStatus defines the observed state of ClusterConfig
 type ClusterConfigStatus struct {
@@ -401,6 +415,7 @@ func (s *ClusterSpec) Validate() (errs []error) {
 		"install":           s.Install,
 		"extensions":        s.Extensions,
 		"konnectivity":      s.Konnectivity,
+		"kernel":            s.Kernel,
 	} {
 		for _, err := range field.Validate() {
 			errs = append(errs, fmt.Errorf("%s: %w", name, err))

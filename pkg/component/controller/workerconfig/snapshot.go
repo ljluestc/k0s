@@ -38,6 +38,7 @@ type configSnapshot struct {
 	featureGates           v1beta1.FeatureGates
 	pauseImage             *v1beta1.ImageSpec
 	pauseWindowsImage      *v1beta1.ImageSpec
+	kernel                 *v1beta1.KernelSpec
 }
 
 func (s *snapshot) DeepCopy() *snapshot {
@@ -71,6 +72,18 @@ func (s *configSnapshot) DeepCopyInto(out *configSnapshot) {
 	out.featureGates = s.featureGates.DeepCopy()
 	out.pauseImage = s.pauseImage.DeepCopy()
 	out.pauseWindowsImage = s.pauseWindowsImage.DeepCopy()
+
+	if s.kernel != nil {
+		out.kernel = &v1beta1.KernelSpec{
+			Modules: slices.Clone(s.kernel.Modules),
+		}
+		if s.kernel.SysctlParams != nil {
+			out.kernel.SysctlParams = make(map[string]string, len(s.kernel.SysctlParams))
+			for k, v := range s.kernel.SysctlParams {
+				out.kernel.SysctlParams[k] = v
+			}
+		}
+	}
 }
 
 // takeConfigSnapshot converts ClusterSpec to a delta snapshot
@@ -82,6 +95,19 @@ func takeConfigSnapshot(spec *v1beta1.ClusterSpec) configSnapshot {
 		konnectivityAgentPort = uint16(v1beta1.DefaultKonnectivitySpec().AgentPort)
 	}
 
+	var kernel *v1beta1.KernelSpec
+	if spec.Kernel != nil {
+		kernel = &v1beta1.KernelSpec{
+			Modules: slices.Clone(spec.Kernel.Modules),
+		}
+		if spec.Kernel.SysctlParams != nil {
+			kernel.SysctlParams = make(map[string]string, len(spec.Kernel.SysctlParams))
+			for k, v := range spec.Kernel.SysctlParams {
+				kernel.SysctlParams[k] = v
+			}
+		}
+	}
+
 	return configSnapshot{
 		spec.Network.DualStack.Enabled,
 		spec.Network.NodeLocalLoadBalancing.DeepCopy(),
@@ -91,5 +117,6 @@ func takeConfigSnapshot(spec *v1beta1.ClusterSpec) configSnapshot {
 		spec.FeatureGates.DeepCopy(),
 		spec.Images.Pause.DeepCopy(),
 		spec.Images.Windows.Pause.DeepCopy(),
+		kernel,
 	}
 }

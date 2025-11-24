@@ -374,6 +374,12 @@ func TestReconciler_ResourceGeneration(t *testing.T) {
 				Name:   "profile_ZZZ",
 				Config: &runtime.RawExtension{Raw: []byte(`{"cgroupsPerQOS": false, "kubeletCgroups": "", "kubeReservedCgroup": ""}`)},
 			}},
+			Kernel: &v1beta1.KernelSpec{
+				Modules: []string{"overlay"},
+				SysctlParams: map[string]string{
+					"net.ipv4.ip_forward": "1",
+				},
+			},
 		},
 	}))
 
@@ -412,9 +418,10 @@ func TestReconciler_ResourceGeneration(t *testing.T) {
 
 	for name, configModFn := range expectedConfigMaps {
 		t.Run(name, func(t *testing.T) {
-			kubelet := requireWorkerProfile(t, appliedResources, name)
+			kubelet, kernel := requireWorkerProfile(t, appliedResources, name)
 			expected := makeKubeletConfig(t, configModFn)
 			assert.JSONEq(t, expected, kubelet)
+			require.JSONEq(t, `{"modules":["overlay"],"sysctlParams":{"net.ipv4.ip_forward":"1"}}`, kernel)
 		})
 	}
 
@@ -728,7 +735,7 @@ func newTestLogger(t *testing.T) logrus.FieldLogger {
 	return log.WithField("test", t.Name())
 }
 
-func requireWorkerProfile(t *testing.T, resources []*unstructured.Unstructured, name string) string {
+func requireWorkerProfile(t *testing.T, resources []*unstructured.Unstructured, name string) (string, string) {
 	configMap := findResource(t, "No ConfigMap found with name "+name,
 		resources, func(resource *unstructured.Unstructured) bool {
 			return resource.GetKind() == "ConfigMap" && resource.GetName() == name
@@ -744,12 +751,16 @@ func requireWorkerProfile(t *testing.T, resources []*unstructured.Unstructured, 
 		require.JSONEq(t, `{"image":"pause","version":"pause-version"}`, pauseImage)
 	}
 
+	kernel, ok, err := unstructured.NestedString(configMap.Object, "data", "kernel")
+	require.NoError(t, err)
+	require.True(t, ok, "No data.kernel field")
+
 	kubeletConfigYAML, ok, err := unstructured.NestedString(configMap.Object, "data", "kubeletConfiguration")
 	require.NoError(t, err)
 	require.True(t, ok, "No data.kubeletConfiguration field")
 	kubeletConfigJSON, err := yaml.YAMLToJSONStrict([]byte(kubeletConfigYAML))
 	require.NoError(t, err)
-	return string(kubeletConfigJSON)
+	return string(kubeletConfigJSON), kernel
 }
 
 func findResource(t *testing.T, failureMessage string, resources resources, probe func(*unstructured.Unstructured) bool) *unstructured.Unstructured {
