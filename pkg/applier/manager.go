@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path"
 	"path/filepath"
 	"slices"
@@ -137,6 +138,12 @@ func (m *Manager) runWatchers(ctx context.Context) {
 			case fsnotify.Create:
 				if dir.IsDirectory(event.Name) {
 					m.createStack(ctx, stacks, event.Name)
+				} else {
+					// Check if it is a symlink to a directory
+					fi, err := os.Stat(event.Name)
+					if err == nil && fi.IsDir() {
+						m.createStack(ctx, stacks, event.Name)
+					}
 				}
 			case fsnotify.Remove:
 				m.removeStack(ctx, stacks, event.Name)

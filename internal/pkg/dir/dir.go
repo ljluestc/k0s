@@ -30,6 +30,11 @@ func GetAll(base string) ([]string, error) {
 	for _, f := range fileInfos {
 		if f.IsDir() {
 			dirs = append(dirs, f.Name())
+		} else if f.Type()&os.ModeSymlink != 0 {
+			// Check if symlink points to a directory
+			if IsDirectory(base + string(os.PathSeparator) + f.Name()) {
+				dirs = append(dirs, f.Name())
+			}
 		}
 	}
 	return dirs, nil
