@@ -167,6 +167,22 @@ var roundtripTests = []roundtripTest{
 			"konnectivity": `{"enabled":true,"agentPort":1337}`,
 		},
 	},
+	{
+		"kernel",
+		&Profile{
+			Kernel: &v1beta1.KernelSpec{
+				Modules: []string{"overlay", "nf_conntrack"},
+				SysctlParams: map[string]string{
+					"net.ipv4.ip_forward": "1",
+				},
+			},
+			Konnectivity: Konnectivity{AgentPort: 1337},
+		},
+		map[string]string{
+			"kernel":       `{"modules":["overlay","nf_conntrack"],"sysctlParams":{"net.ipv4.ip_forward":"1"}}`,
+			"konnectivity": `{"agentPort":1337}`,
+		},
+	},
 }
 
 func makeHostPort(host string, port uint16) net.HostPort {

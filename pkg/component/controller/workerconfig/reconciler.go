@@ -605,6 +605,18 @@ func (r *Reconciler) buildProfile(snapshot *snapshot) *workerconfig.Profile {
 		DualStackEnabled: snapshot.dualStackEnabled,
 	}
 
+	if snapshot.kernel != nil {
+		workerProfile.Kernel = &v1beta1.KernelSpec{
+			Modules: slices.Clone(snapshot.kernel.Modules),
+		}
+		if snapshot.kernel.SysctlParams != nil {
+			workerProfile.Kernel.SysctlParams = make(map[string]string, len(snapshot.kernel.SysctlParams))
+			for k, v := range snapshot.kernel.SysctlParams {
+				workerProfile.Kernel.SysctlParams[k] = v
+			}
+		}
+	}
+
 	if workerProfile.NodeLocalLoadBalancing != nil &&
 		workerProfile.NodeLocalLoadBalancing.EnvoyProxy != nil &&
 		workerProfile.NodeLocalLoadBalancing.EnvoyProxy.ImagePullPolicy == "" {

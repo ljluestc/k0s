@@ -238,6 +238,7 @@ spec:
   installConfig: null
   telemetry: null
   konnectivity: null
+  kernel: null
 `)
 	extensionsYamlData := []byte(`
 apiVersion: k0s.k0sproject.io/v1beta1
@@ -263,6 +264,7 @@ spec:
 	assert.Equal(t, DefaultInstallSpec(), c.Spec.Install)
 	assert.Equal(t, DefaultClusterTelemetry(), c.Spec.Telemetry)
 	assert.Equal(t, DefaultKonnectivitySpec(), c.Spec.Konnectivity)
+	assert.Nil(t, c.Spec.Kernel)
 
 	e, err := ConfigFromBytes(extensionsYamlData)
 	assert.NoError(t, err)
@@ -333,6 +335,7 @@ func TestClusterConfig_StripDefaults_DefaultConfig(t *testing.T) {
 	a.Nil(stripped.Spec.Telemetry)
 	a.Nil(stripped.Spec.Images)
 	a.Nil(stripped.Spec.Konnectivity)
+	a.Nil(stripped.Spec.Kernel)
 }
 
 func TestClusterConfig_StripDefaults_Images(t *testing.T) {
@@ -445,4 +448,29 @@ func TestFeatureGates(t *testing.T) {
 	assert.Equal(t, "feature_ZZZ", c.Spec.FeatureGates[2].Name)
 
 	assert.False(t, c.Spec.FeatureGates[2].Enabled)
+}
+
+func TestKernelSpec(t *testing.T) {
+	yamlData := []byte(`
+apiVersion: k0s.k0sproject.io/v1beta1
+kind: ClusterConfig
+metadata:
+  name: foobar
+spec:
+  kernel:
+    modules:
+      - overlay
+      - nf_conntrack
+    sysctlParams:
+      net.ipv4.ip_forward: "1"
+      net.bridge.bridge-nf-call-iptables: "1"
+`)
+	c, err := ConfigFromBytes(yamlData)
+	assert.NoError(t, err)
+	require.NotNil(t, c.Spec.Kernel)
+	assert.Equal(t, []string{"overlay", "nf_conntrack"}, c.Spec.Kernel.Modules)
+	assert.Equal(t, map[string]string{
+		"net.ipv4.ip_forward":                "1",
+		"net.bridge.bridge-nf-call-iptables": "1",
+	}, c.Spec.Kernel.SysctlParams)
 }

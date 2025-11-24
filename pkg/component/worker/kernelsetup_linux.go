@@ -4,12 +4,14 @@
 package worker
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path"
 	"strings"
 
 	"github.com/k0sproject/k0s/internal/pkg/file"
+	"github.com/k0sproject/k0s/pkg/apis/k0s/v1beta1"
 
 	"github.com/sirupsen/logrus"
 )
@@ -29,41 +31,77 @@ func hasFilesystem(filesystem string) bool {
 	return false
 }
 
-func modprobe(module string) {
+func modprobe(module string) error {
 	out, err := exec.Command("modprobe", module).CombinedOutput()
 	if err != nil {
-		logrus.WithError(err).Warnf("failed to load kernel module %s: %s", module, out)
+		return fmt.Errorf("failed to load kernel module %s: %s: %w", module, out, err)
 	}
+	return nil
 }
 
-func enableSysCtl(entry string) {
-	file := path.Join("/proc", "sys", entry)
-	err := os.WriteFile(file, []byte("1"), 0644)
-	if err != nil {
-		logrus.Warnf("Failed to enable %s: %s", file, err.Error())
+func setSysCtl(key, value string) error {
+	pathComp := strings.ReplaceAll(key, ".", "/")
+	file := path.Join("/proc", "sys", pathComp)
+	if err := os.WriteFile(file, []byte(value), 0644); err != nil {
+		return fmt.Errorf("failed to enable %s=%s: %w", file, value, err)
 	}
+	return nil
 }
 
 // KernelSetup sets the needed kernel tuning params. If setting the options fails, it only logs
 // a warning but does not prevent the starting of worker
-func KernelSetup() {
+func KernelSetup(config *v1beta1.KernelSpec) error {
 	if !hasFilesystem("overlay") {
-		modprobe("overlay")
+		if err := modprobe("overlay"); err != nil {
+			logrus.WithError(err).Warn("Failed to load overlay module")
+		}
 	}
 	if !file.Exists("/proc/net/nf_conntrack") {
-		modprobe("nf_conntrack")
+		if err := modprobe("nf_conntrack"); err != nil {
+			logrus.WithError(err).Warn("Failed to load nf_conntrack module")
+		}
 	}
 	if !file.Exists("/proc/sys/net/bridge/bridge-nf-call-iptables") {
-		modprobe("br_netfilter")
+		if err := modprobe("br_netfilter"); err != nil {
+			logrus.WithError(err).Warn("Failed to load br_netfilter module")
+		}
 	}
 	// https://github.com/kubernetes/kubernetes/issues/108877
 	if !file.Exists("/proc/net/ip_tables_targets") {
-		modprobe("ip_tables")
+		if err := modprobe("ip_tables"); err != nil {
+			logrus.WithError(err).Warn("Failed to load ip_tables module")
+		}
 	}
-	enableSysCtl("net/ipv4/conf/all/forwarding")
-	enableSysCtl("net/ipv4/conf/default/forwarding")
-	enableSysCtl("net/ipv6/conf/all/forwarding")
-	enableSysCtl("net/ipv6/conf/default/forwarding")
-	enableSysCtl("net/bridge/bridge-nf-call-iptables")
-	enableSysCtl("net/bridge/bridge-nf-call-ip6tables")
+	if err := setSysCtl("net.ipv4.conf.all.forwarding", "1"); err != nil {
+		logrus.WithError(err).Warn("Failed to enable net.ipv4.conf.all.forwarding")
+	}
+	if err := setSysCtl("net.ipv4.conf.default.forwarding", "1"); err != nil {
+		logrus.WithError(err).Warn("Failed to enable net.ipv4.conf.default.forwarding")
+	}
+	if err := setSysCtl("net.ipv6.conf.all.forwarding", "1"); err != nil {
+		logrus.WithError(err).Warn("Failed to enable net.ipv6.conf.all.forwarding")
+	}
+	if err := setSysCtl("net.ipv6.conf.default.forwarding", "1"); err != nil {
+		logrus.WithError(err).Warn("Failed to enable net.ipv6.conf.default.forwarding")
+	}
+	if err := setSysCtl("net.bridge.bridge-nf-call-iptables", "1"); err != nil {
+		logrus.WithError(err).Warn("Failed to enable net.bridge.bridge-nf-call-iptables")
+	}
+	if err := setSysCtl("net.bridge.bridge-nf-call-ip6tables", "1"); err != nil {
+		logrus.WithError(err).Warn("Failed to enable net.bridge.bridge-nf-call-ip6tables")
+	}
+
+	if config != nil {
+		for _, module := range config.Modules {
+			if err := modprobe(module); err != nil {
+				return err
+			}
+		}
+		for k, v := range config.SysctlParams {
+			if err := setSysCtl(k, v); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

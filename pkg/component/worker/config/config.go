@@ -27,6 +27,7 @@ type Profile struct {
 	Konnectivity           Konnectivity
 	PauseImage             *v1beta1.ImageSpec
 	DualStackEnabled       bool
+	Kernel                 *v1beta1.KernelSpec
 }
 
 func (p *Profile) DeepCopy() *Profile {
@@ -50,6 +51,17 @@ func (p *Profile) DeepCopyInto(out *Profile) {
 		*out = new(v1beta1.NodeLocalLoadBalancing)
 		(*in).DeepCopyInto(*out)
 	}
+	if p.Kernel != nil {
+		out.Kernel = &v1beta1.KernelSpec{
+			Modules: slices.Clone(p.Kernel.Modules),
+		}
+		if p.Kernel.SysctlParams != nil {
+			out.Kernel.SysctlParams = make(map[string]string, len(p.Kernel.SysctlParams))
+			for k, v := range p.Kernel.SysctlParams {
+				out.Kernel.SysctlParams[k] = v
+			}
+		}
+	}
 }
 
 func (p *Profile) Validate(path *field.Path) (errs field.ErrorList) {
@@ -59,6 +71,11 @@ func (p *Profile) Validate(path *field.Path) (errs field.ErrorList) {
 
 	errs = append(errs, p.NodeLocalLoadBalancing.Validate(path.Child("nodeLocalLoadBalancing"))...)
 	errs = append(errs, p.Konnectivity.Validate(path.Child("konnectivity"))...)
+	if p.Kernel != nil {
+		for _, err := range p.Kernel.Validate() {
+			errs = append(errs, field.Invalid(path.Child("kernel"), "", err.Error()))
+		}
+	}
 
 	return
 }
@@ -143,6 +160,7 @@ func forEachConfigMapEntry(profile *Profile, f func(fieldName string, ptr any)) 
 		"konnectivity":           &profile.Konnectivity,
 		"pauseImage":             &profile.PauseImage,
 		"dualStackEnabled":       &profile.DualStackEnabled,
+		"kernel":                 &profile.Kernel,
 	} {
 		f(fieldName, ptr)
 	}
