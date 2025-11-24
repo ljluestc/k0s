@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/k0sproject/k0s/cmd/internal"
 	"github.com/k0sproject/k0s/internal/pkg/dir"
@@ -24,6 +25,7 @@ import (
 	"github.com/k0sproject/k0s/pkg/component/worker"
 	workerconfig "github.com/k0sproject/k0s/pkg/component/worker/config"
 	"github.com/k0sproject/k0s/pkg/component/worker/containerd"
+	"github.com/k0sproject/k0s/pkg/component/worker/crio"
 	"github.com/k0sproject/k0s/pkg/component/worker/nllb"
 	"github.com/k0sproject/k0s/pkg/config"
 	"github.com/k0sproject/k0s/pkg/constant"
@@ -270,6 +272,9 @@ func (c *Command) Start(ctx context.Context, nodeName apitypes.NodeName, kubelet
 	if c.CriSocket == "" {
 		componentManager.Add(ctx, containerd.NewComponent(c.LogLevels.Containerd, c.K0sVars, workerConfig))
 		componentManager.Add(ctx, worker.NewOCIBundleReconciler(c.K0sVars))
+	} else if strings.HasPrefix(c.CriSocket, "crio") {
+		// Only add CRI-O component if it's explicitly selected
+		componentManager.Add(ctx, crio.NewComponent(c.K0sVars))
 	}
 
 	if controller == nil && runtime.GOOS == "linux" {

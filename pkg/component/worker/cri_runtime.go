@@ -29,8 +29,8 @@ func parseCRISocketFlag(criSocketFlag string) (*RuntimeEndpoint, error) {
 	if !ok {
 		return nil, errors.New("CRI socket flag must be of the form <type>:<url>")
 	}
-	if runtimeType != "remote" {
-		return nil, fmt.Errorf(`unknown runtime type %q, only "remote" is supported`, runtimeType)
+	if runtimeType != "remote" && runtimeType != "crio" {
+		return nil, fmt.Errorf(`unknown runtime type %q, only "remote" and "crio" are supported`, runtimeType)
 	}
 	parsedRuntimeEndpoint, err := url.Parse(runtimeEndpoint)
 	if err != nil {
