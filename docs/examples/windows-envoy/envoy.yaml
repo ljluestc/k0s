@@ -1,0 +1,30 @@
+node:
+  cluster: nllb-cluster
+  id: nllb-id
+
+dynamic_resources:
+  cds_config:
+    path: C:\etc\envoy\cds.yaml
+
+static_resources:
+  listeners:
+  - name: apiserver
+    address:
+      socket_address: { address: "127.0.0.1", port_value: 7443 }
+    filter_chains:
+    - filters:
+      - name: envoy.filters.network.tcp_proxy
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.tcp_proxy.v3.TcpProxy
+          stat_prefix: apiserver
+          cluster: apiserver
+  - name: konnectivity
+    address:
+      socket_address: { address: "127.0.0.1", port_value: 8132 }
+    filter_chains:
+    - filters:
+      - name: envoy.filters.network.tcp_proxy
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.tcp_proxy.v3.TcpProxy
+          stat_prefix: konnectivity
+          cluster: konnectivity

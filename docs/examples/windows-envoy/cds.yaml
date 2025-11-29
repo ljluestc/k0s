@@ -1,0 +1,51 @@
+resources:
+- "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+  name: apiserver
+  connect_timeout: 0.25s
+  type: STATIC
+  lb_policy: RANDOM
+  load_assignment:
+    cluster_name: apiserver
+    endpoints:
+    - lb_endpoints:
+      - endpoint:
+          address:
+            socket_address:
+              address: "192.168.1.10"
+              port_value: 6443
+      - endpoint:
+          address:
+            socket_address:
+              address: "192.168.1.11"
+              port_value: 6443
+  health_checks:
+  - tcp_health_check: {}
+    timeout: 1s
+    interval: 5s
+    healthy_threshold: 3
+    unhealthy_threshold: 5
+- "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+  name: konnectivity
+  connect_timeout: 0.25s
+  type: STATIC
+  lb_policy: ROUND_ROBIN
+  load_assignment:
+    cluster_name: konnectivity
+    endpoints:
+    - lb_endpoints:
+      - endpoint:
+          address:
+            socket_address:
+              address: "192.168.1.10"
+              port_value: 8132
+      - endpoint:
+          address:
+            socket_address:
+              address: "192.168.1.11"
+              port_value: 8132
+  health_checks:
+  - tcp_health_check: {}
+    timeout: 1s
+    interval: 5s
+    healthy_threshold: 3
+    unhealthy_threshold: 5
