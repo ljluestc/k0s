@@ -23,6 +23,7 @@ import (
 	"github.com/k0sproject/k0s/pkg/component/controller/leaderelector"
 	"github.com/k0sproject/k0s/pkg/component/manager"
 	workerconfig "github.com/k0sproject/k0s/pkg/component/worker/config"
+	"github.com/k0sproject/k0s/pkg/component/controller/workerconfig/kubeadm"
 	"github.com/k0sproject/k0s/pkg/config"
 	"github.com/k0sproject/k0s/pkg/constant"
 	kubeutil "github.com/k0sproject/k0s/pkg/kubernetes"
@@ -80,6 +81,11 @@ var (
 	reconcilerStarted     reconcilerState = "started"
 	reconcilerStopped     reconcilerState = "stopped"
 )
+
+// NewKubeadmController creates a new kubeadm bootstrap controller
+func NewKubeadmController(clientFactory kubeutil.ClientFactoryInterface) (*kubeadm.Controller, error) {
+	return kubeadm.NewController(clientFactory)
+}
 
 // NewReconciler creates a new reconciler for worker configurations.
 func NewReconciler(k0sVars *config.CfgVars, nodeSpec *v1beta1.ClusterSpec, clientFactory kubeutil.ClientFactoryInterface, leaderElector leaderelector.Interface, konnectivityEnabled bool) (*Reconciler, error) {
@@ -500,6 +506,10 @@ func (r *Reconciler) buildConfigMaps(snapshot *snapshot) ([]*corev1.ConfigMap, e
 	workerProfile.KubeletConfiguration.KubeletCgroups = ""
 	workerProfiles["default-windows"] = workerProfile
 
+	// Add kubeadm worker profile for kubeadm-based bootstrap
+	kubeadmProfile := r.buildKubeadmProfile(snapshot)
+	workerProfiles["kubeadm"] = kubeadmProfile
+
 	for _, profile := range snapshot.profiles {
 		workerProfile, ok := workerProfiles[profile.Name]
 		if !ok {
@@ -546,6 +556,11 @@ func buildRBACResources(configMaps []*corev1.ConfigMap) []resource {
 			Resources:     []string{"configmaps"},
 			Verbs:         []string{"get", "list", "watch"},
 			ResourceNames: configMapNames,
+		}, {
+			// Allow access to bootstrap tokens for kubeadm workers
+			APIGroups: []string{""},
+			Resources: []string{"secrets"},
+			Verbs:     []string{"get", "list", "watch"},
 		}},
 	})
 
@@ -609,6 +624,46 @@ func (r *Reconciler) buildProfile(snapshot *snapshot) *workerconfig.Profile {
 		workerProfile.NodeLocalLoadBalancing.EnvoyProxy != nil &&
 		workerProfile.NodeLocalLoadBalancing.EnvoyProxy.ImagePullPolicy == "" {
 		workerProfile.NodeLocalLoadBalancing.EnvoyProxy.ImagePullPolicy = snapshot.defaultImagePullPolicy
+	}
+
+	return workerProfile
+}
+
+func (r *Reconciler) buildKubeadmProfile(snapshot *snapshot) *workerconfig.Profile {
+	// For kubeadm workers, we create a minimal profile that focuses on bootstrap information
+	// The kubeadm join command will handle most of the kubelet configuration
+	workerProfile := &workerconfig.Profile{
+		APIServerAddresses: slices.Clone(snapshot.apiServers),
+		KubeletConfiguration: kubeletv1beta1.KubeletConfiguration{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: kubeletv1beta1.SchemeGroupVersion.String(),
+				Kind:       "KubeletConfiguration",
+			},
+			ClusterDNS:         []string{r.clusterDNSIP.String()},
+			ClusterDomain:      r.clusterDomain,
+			FailSwapOn:         ptr.To(false),
+			RotateCertificates: true,
+			ServerTLSBootstrap: true,
+		},
+		PauseImage:             snapshot.pauseImage.DeepCopy(),
+		NodeLocalLoadBalancing: snapshot.nodeLocalLoadBalancing.DeepCopy(),
+		Konnectivity: workerconfig.Konnectivity{
+			Enabled:   r.konnectivityEnabled,
+			AgentPort: snapshot.konnectivityAgentPort,
+		},
+		DualStackEnabled: snapshot.dualStackEnabled,
+	}
+
+	if workerProfile.NodeLocalLoadBalancing != nil &&
+		workerProfile.NodeLocalLoadBalancing.EnvoyProxy != nil &&
+		workerProfile.NodeLocalLoadBalancing.EnvoyProxy.ImagePullPolicy == "" {
+		workerProfile.NodeLocalLoadBalancing.EnvoyProxy.ImagePullPolicy = snapshot.defaultImagePullPolicy
+	}
+
+	// Note: KubeadmBootstrap configuration will be populated by a separate controller
+	// that manages bootstrap tokens to avoid creating new tokens on every reconciliation
+	workerProfile.KubeadmBootstrap = &workerconfig.KubeadmBootstrap{
+		APIServerEndpoint: snapshot.apiServers[0].String(), // Use first API server
 	}
 
 	return workerProfile

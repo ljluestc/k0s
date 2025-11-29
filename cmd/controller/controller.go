@@ -523,6 +523,13 @@ func (c *command) start(ctx context.Context, flags *config.ControllerOptions, de
 			return err
 		}
 		clusterComponents.Add(ctx, reconciler)
+
+		// Add kubeadm bootstrap controller for kubeadm worker support
+		kubeadmController, err := workerconfig.NewKubeadmController(adminClientFactory)
+		if err != nil {
+			return err
+		}
+		clusterComponents.Add(ctx, kubeadmController)
 	}
 
 	if !slices.Contains(flags.DisableComponents, constant.SystemRBACComponentName) {

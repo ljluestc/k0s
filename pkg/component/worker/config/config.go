@@ -27,6 +27,7 @@ type Profile struct {
 	Konnectivity           Konnectivity
 	PauseImage             *v1beta1.ImageSpec
 	DualStackEnabled       bool
+	KubeadmBootstrap       *KubeadmBootstrap `json:"kubeadmBootstrap,omitempty"`
 }
 
 func (p *Profile) DeepCopy() *Profile {
@@ -49,6 +50,11 @@ func (p *Profile) DeepCopyInto(out *Profile) {
 		in, out := &p.NodeLocalLoadBalancing, &out.NodeLocalLoadBalancing
 		*out = new(v1beta1.NodeLocalLoadBalancing)
 		(*in).DeepCopyInto(*out)
+	}
+	if p.KubeadmBootstrap != nil {
+		in, out := &p.KubeadmBootstrap, &out.KubeadmBootstrap
+		*out = new(KubeadmBootstrap)
+		**out = **in
 	}
 }
 
@@ -79,6 +85,12 @@ func (k *Konnectivity) Validate(path *field.Path) (errs field.ErrorList) {
 	}
 
 	return
+}
+
+type KubeadmBootstrap struct {
+	APIServerEndpoint string `json:"apiServerEndpoint"`
+	Token             string `json:"token"`
+	CACertHash        string `json:"caCertHash"`
 }
 
 func FromConfigMapData(data map[string]string) (*Profile, error) {
@@ -143,6 +155,7 @@ func forEachConfigMapEntry(profile *Profile, f func(fieldName string, ptr any)) 
 		"konnectivity":           &profile.Konnectivity,
 		"pauseImage":             &profile.PauseImage,
 		"dualStackEnabled":       &profile.DualStackEnabled,
+		"kubeadmBootstrap":       &profile.KubeadmBootstrap,
 	} {
 		f(fieldName, ptr)
 	}
